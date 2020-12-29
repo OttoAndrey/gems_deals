@@ -16,6 +16,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 
+from deal.views import DealView
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('deal/', DealView.as_view(), name='deal'),
 ]
