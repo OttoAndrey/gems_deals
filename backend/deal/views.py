@@ -1,30 +1,26 @@
 import csv
 
-from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import Sum
-from django.http import JsonResponse, HttpResponse
-from django.utils.decorators import method_decorator
-from django.views import View
-from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from deal.models import Users, Gem, Deal
+from deal.serializers import DealSerializer, UsersSerializer, GemSerializer, FileUploadSerializer
 
 
-class DealView(View):
-    @method_decorator(csrf_exempt)
-    def dispatch(self, request, *args, **kwargs):
-        return super(DealView, self).dispatch(request, *args, **kwargs)
-
+class DealView(APIView):
     def get(self, request):
-        most_spents_users = Users.objects.annotate(total_sum=Sum('deals__total')).order_by('-total_sum')[:5]
+        most_spends_users = Users.objects.annotate(total_sum=Sum('deals__total')).order_by('-total_sum')[:5]
 
         users_gems = {}
-        for user in most_spents_users:
+        for user in most_spends_users:
             user_gems = list(set(deal.item.title for deal in Deal.objects.filter(customer=user)))
             users_gems[user] = user_gems
 
         users = {}
-        for user in most_spents_users:
+        for user in most_spends_users:
             user_gems = users_gems.pop(user)
 
             without_current_user_all_gems = []
@@ -42,20 +38,39 @@ class DealView(View):
         return JsonResponse(users, status=200)
 
     def post(self, request, *args, **kwargs):
-        file = request.FILES['deals_file']
+        file_serializer = FileUploadSerializer(data=request.data)
+        file_serializer.is_valid(raise_exception=True)
+        file = file_serializer.validated_data['deals_file']
         decoded_file = file.read().decode('utf-8').splitlines()
         reader = csv.DictReader(decoded_file)
+
         deals = []
         for row in reader:
-            user, created = Users.objects.get_or_create(username=row['customer'])
-            gem, created = Gem.objects.get_or_create(title=row['item'])
+            dict_row = dict(row)
+            user_serializer = UsersSerializer(data=dict_row)
+            user_serializer.is_valid(raise_exception=True)
+            user, created = Users.objects.get_or_create(username=user_serializer.validated_data['username'])
+
+            gem_serializer = GemSerializer(data=dict_row)
+            gem_serializer.is_valid(raise_exception=True)
+            gem, created = Gem.objects.get_or_create(title=gem_serializer.validated_data['title'])
+
+            deal_serializer = DealSerializer(data=dict_row)
+            deal_serializer.is_valid(raise_exception=True)
+
             deal = Deal(
                 customer=user,
                 item=gem,
-                total=row['total'],
-                quantity=row['quantity'],
-                date=row['date']
+                total=deal_serializer.validated_data['total'],
+                quantity=deal_serializer.validated_data['quantity'],
+                date=deal_serializer.validated_data['date'],
             )
             deals.append(deal)
         Deal.objects.bulk_create(deals)
-        return HttpResponse('Успешно перенес объекты из файла в БД!', status=201)
+
+        content = []
+        for deal in deals:
+            response_serializer = DealSerializer(deal)
+            content.append(response_serializer.data)
+
+        return Response(content, status=status.HTTP_201_CREATED)
