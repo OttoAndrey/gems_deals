@@ -4,10 +4,10 @@ from deal.models import Deal, Users, Gem
 
 
 class FileUploadSerializer(serializers.Serializer):
-    deals_file = serializers.FileField()
+    deals = serializers.FileField()
 
     class Meta:
-        fields = ['deals_file',]
+        fields = ['deals', ]
 
 
 class UsersSerializer(serializers.ModelSerializer):
@@ -27,7 +27,6 @@ class GemSerializer(serializers.ModelSerializer):
 
 
 class DealSerializer(serializers.ModelSerializer):
-
     customer = serializers.CharField(source='customer.username')
     item = serializers.CharField(source='item.title')
 

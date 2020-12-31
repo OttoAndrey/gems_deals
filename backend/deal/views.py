@@ -1,7 +1,6 @@
 import csv
 
 from django.db.models import Sum
-from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -19,7 +18,7 @@ class DealView(APIView):
             user_gems = list(set(deal.item.title for deal in Deal.objects.filter(customer=user)))
             users_gems[user] = user_gems
 
-        users = {}
+        users = []
         for user in most_spends_users:
             user_gems = users_gems.pop(user)
 
@@ -33,14 +32,15 @@ class DealView(APIView):
                     answer_gems.append(user_gem)
 
             users_gems[user] = user_gems
-            users[user.username] = {'spent_money': user.total_sum,
-                                    'gems': answer_gems}
-        return JsonResponse(users, status=200)
+            users.append({'username': user.username,
+                          'spent_money': user.total_sum,
+                          'gems': answer_gems})
+        return Response(users, status=status.HTTP_200_OK)
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request):
         file_serializer = FileUploadSerializer(data=request.data)
         file_serializer.is_valid(raise_exception=True)
-        file = file_serializer.validated_data['deals_file']
+        file = file_serializer.validated_data['deals']
         decoded_file = file.read().decode('utf-8').splitlines()
         reader = csv.DictReader(decoded_file)
 
@@ -66,11 +66,11 @@ class DealView(APIView):
                 date=deal_serializer.validated_data['date'],
             )
             deals.append(deal)
+
         Deal.objects.bulk_create(deals)
 
         content = []
         for deal in deals:
             response_serializer = DealSerializer(deal)
             content.append(response_serializer.data)
-
         return Response(content, status=status.HTTP_201_CREATED)
