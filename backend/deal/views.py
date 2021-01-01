@@ -1,6 +1,5 @@
 import csv
 
-from django.db.models import Sum
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,30 +10,30 @@ from deal.serializers import DealSerializer, UsersSerializer, GemSerializer, Fil
 
 class DealView(APIView):
     def get(self, request):
-        most_spends_users = Users.objects.annotate(total_sum=Sum('deals__total')).order_by('-total_sum')[:5]
+        most_spends_users = Users.objects.most_spends()[:5].prefetch_related('deals')
 
         users_gems = {}
         for user in most_spends_users:
-            user_gems = list(set(deal.item.title for deal in Deal.objects.filter(customer=user)))
+            user_gems = set(deal.item.title for deal in user.deals.select_related('item'))
             users_gems[user] = user_gems
 
         users = []
         for user in most_spends_users:
             user_gems = users_gems.pop(user)
 
-            without_current_user_all_gems = []
+            other_user_gems = []
             for gems in users_gems.values():
-                without_current_user_all_gems.extend(gems)
+                other_user_gems.extend(gems)
 
-            answer_gems = []
+            cross_gems = []
             for user_gem in user_gems:
-                if user_gem in without_current_user_all_gems:
-                    answer_gems.append(user_gem)
+                if user_gem in other_user_gems:
+                    cross_gems.append(user_gem)
 
             users_gems[user] = user_gems
             users.append({'username': user.username,
                           'spent_money': user.total_sum,
-                          'gems': answer_gems})
+                          'gems': cross_gems})
         return Response(users, status=status.HTTP_200_OK)
 
     def post(self, request):
